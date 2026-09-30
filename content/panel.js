@@ -87,7 +87,7 @@ root.innerHTML = `
   .note{margin:4px 0;padding:4px 8px;border-radius:4px;font-weight:600}
   .note.error{background:#fee2e2;color:#991b1b}.note.ok{background:#dcfce7;color:#166534}
 </style>
-<div class="box"><header><b>TDS Filler</b><span class="chip" hidden></span><button data-a="toggle" title="Collapse / expand">–</button><button data-a="hide" title="Hide (click the toolbar icon to bring it back)">×</button></header><div class="body"></div><div class="status" hidden></div></div>`;
+<div class="box"><header><b>TDS Filler <small style="font-weight:400;opacity:.8">v${chrome.runtime.getManifest?.().version ?? '?'}</small></b><span class="chip" hidden></span><button data-a="toggle" title="Collapse / expand">–</button><button data-a="hide" title="Hide (click the toolbar icon to bring it back)">×</button></header><div class="body"></div><div class="status" hidden></div></div>`;
 const body = root.querySelector('.body');
 const box = root.querySelector('.box');
 const statusEl = root.querySelector('.status');

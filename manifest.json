@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TDS Certificate Filler",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Parse an employer TDS certificate PDF locally and fill the eTax ledger Salary (Section-86) rows.",
   "permissions": [
     "storage",
@@ -28,8 +28,7 @@
       ],
       "matches": [
         "https://ledger.etaxnbr.gov.bd/*"
-      ],
-      "use_dynamic_url": true
+      ]
     }
   ],
   "background": {
@@ -47,5 +46,6 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "minimum_chrome_version": "102"
 }

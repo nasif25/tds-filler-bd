@@ -92,6 +92,9 @@ Unambiguous dates (`2025-08-13`, `13 Aug 2025`, `13/08/2025`) convert automatica
 | "Failed to load extension — Manifest file is missing" | You selected the wrong folder. Select the folder that directly contains `manifest.json`. |
 | The extension's toolbar entry is greyed out in the puzzle menu | Normal on non-portal pages. On the portal it works. Reload the portal page if the panel isn't showing. |
 | No panel on the portal | Reload the page; make sure the address starts with `https://ledger.etaxnbr.gov.bd/`; click the toolbar button. A red "!" on the button means you're on a different site. |
+| Panel doesn't appear, or a red banner says it "could not start" | Click the toolbar icon on the portal page. The banner shows the extension version and, if known, the reason. Check the version: the panel header shows it (e.g. `v0.2.0`), and `chrome://extensions` shows it on the extension's card. If it's older than `0.2.0`, replace the folder with the latest copy, click the reload arrow on the extension's card, then reload the portal page. Needs Chrome 102 or newer. If it still fails, press F12 → Console on the portal page and send the line starting `[TDS Filler]`. |
+| The extensions menu says it "has access to this site" but there's no panel | That only means the permission is fine. Click the toolbar icon (pin it via the puzzle-piece menu first). If a banner appears, follow it. |
+| "Manifest file is missing" after unzipping | Zips often unpack into a folder inside a folder. Select the inner folder that directly contains `manifest.json`. |
 | "Click the portal's Add button first" | Fill works only on a blank row created by the portal's Add button. |
 | "Could not read PDF" | Scanned/image-only PDFs can't be read. Use the original PDF, or export to CSV/Excel. |
 | "File is too large" | Files over 15 MB are refused. |

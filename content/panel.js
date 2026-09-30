@@ -1,6 +1,6 @@
 // Floating panel injected into the portal: load PDF/Excel/CSV, review column mapping, fill / copy rows.
 import { extractFile, rankTables, withHeaderRow } from '../lib/extract.js';
-import { autoMap, buildRows, rowOk, signature, FIELDS } from '../lib/mapping.js';
+import { autoMap, buildRows, rowOk, signature, candidateColumns, FIELDS } from '../lib/mapping.js';
 import { toPortal } from '../lib/dates.js';
 import { onSalaryPage, savedChallanNos, fillRow, norm } from './portal.js';
 
@@ -10,7 +10,7 @@ const state = {
   fileName: '', tables: [], tIdx: 0,
   headerRows: {}, maps: {}, // per-table user overrides
   authority: undefined, hint: undefined, edits: {}, filled: new Set(), editAll: new Set(),
-  savedMaps: {}, aliases: {}, ptype: undefined, lastPtype: '', lastAuthority: '', keywordMsg: {}, rowNote: {}, notice: null, scrollTo: null, hidden: false, open: true, busy: false,
+  mapOpen: true, touched: {}, savedMaps: {}, aliases: {}, ptype: undefined, lastPtype: '', lastAuthority: '', keywordMsg: {}, rowNote: {}, notice: null, scrollTo: null, hidden: false, open: true, busy: false,
 };
 
 const loaders = {
@@ -86,6 +86,33 @@ root.innerHTML = `
   .row.ok{border-color:#16a34a;background:#f0fdf4}
   .note{margin:4px 0;padding:4px 8px;border-radius:4px;font-weight:600}
   .note.error{background:#fee2e2;color:#991b1b}.note.ok{background:#dcfce7;color:#166534}
+  .hint{color:#4b5563;margin:4px 0 8px}
+  .tbad{color:#b91c1c}.tamber{color:#b45309}
+  .fld{border:1px solid #d1d5db;border-left-width:5px;border-radius:6px;padding:6px 8px;margin:6px 0;background:#fff}
+  .fld.found{border-left-color:#16a34a}
+  .fld.const{border-left-color:#2563eb;background:#f8fbff}
+  .fld.check{border-left-color:#f59e0b;background:#fffbeb}
+  .fld.missing{border-color:#dc2626;border-left-color:#dc2626;background:#fef2f2;animation:attn 1s ease-in-out 2}
+  @keyframes attn{50%{box-shadow:0 0 0 3px #dc262666}}
+  .fh{display:flex;align-items:center;gap:8px}
+  .fh .eg{margin-left:auto;color:#6b7280;font-family:ui-monospace,monospace;font-size:12px}
+  .ic{display:inline-flex;width:20px;height:20px;border-radius:50%;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex:none}
+  .ic.found{background:#16a34a}.ic.const{background:#2563eb}.ic.check{background:#f59e0b}.ic.missing{background:#dc2626}
+  .fs{margin:3px 0 5px 28px}
+  .fs.found{color:#166534}.fs.const{color:#1e40af}.fs.check{color:#92400e;font-weight:600}.fs.missing{color:#991b1b;font-weight:700}
+  .fc{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:28px}
+  .fc select:first-child{flex:1;min-width:150px}
+  .fc .or{color:#6b7280;font-size:12px}
+  .fc input[type=text]{flex:1;min-width:130px}
+  .sug{margin:6px 0 2px 28px}
+  .sug>span{font-weight:600;color:#991b1b}
+  .sug button{margin:2px 2px 2px 0;background:#fff;border-color:#dc2626;color:#991b1b}
+  .kwrow{margin-top:6px}
+  .kwrow small{display:block;color:#6b7280}
+  .ac{position:relative;display:inline-block;width:190px;height:26px;vertical-align:middle}
+  .ac input{position:absolute;inset:0;width:100%;height:100%;background:transparent;z-index:1;box-sizing:border-box}
+  .ac .ghost{position:absolute;inset:0;display:flex;align-items:center;padding:0 5px;border:1px solid transparent;box-sizing:border-box;color:#9ca3af;white-space:pre;overflow:hidden;pointer-events:none;font:inherit}
+  .need{color:#b91c1c;font-size:12px;margin-top:4px}
 </style>
 <div class="box"><header><b>TDS Filler <small style="font-weight:400;opacity:.8">v${chrome.runtime.getManifest?.().version ?? '?'}</small></b><span class="chip" hidden></span><button data-a="toggle" title="Collapse / expand">–</button><button data-a="hide" title="Hide (click the toolbar icon to bring it back)">×</button></header><div class="body"></div><div class="status" hidden></div></div>`;
 const body = root.querySelector('.body');
@@ -114,11 +141,20 @@ function current() {
   const sig = signature(table.headers);
   const auto = autoMap(table, state.savedMaps['sig:' + sig], state.aliases); // prefixed: a header called "__proto__" must not touch the object's prototype
   const map = state.maps[state.tIdx] ?? auto.map;
-  const confidence = state.maps[state.tIdx] ? Object.fromEntries(FIELDS.map((f) => [f.key, map[f.key] == null ? 'none' : 'saved'])) : auto.confidence;
-  const authority = state.authority ?? table.meta?.authority ?? state.lastAuthority ?? '';
-  const paymentType = state.ptype ?? (state.lastPtype || undefined);
+  // Once the user edits the mapping, only the fields they actually touched count as "their choice";
+  // columns the extension merely guessed keep asking to be checked.
+  const touched = state.touched[state.tIdx] ?? [];
+  const confidence = state.maps[state.tIdx]
+    ? Object.fromEntries(FIELDS.map((f) => [f.key, map[f.key] == null ? 'none'
+      : touched.includes(f.key) || map[f.key] !== auto.map[f.key] ? 'saved' : auto.confidence[f.key]]))
+    : auto.confidence;
+  // values that apply to every row, and where they came from (shown to the user)
+  const [authority, authoritySrc] = state.authority !== undefined ? [state.authority, 'user']
+    : table.meta?.authority ? [table.meta.authority, 'document']
+    : state.lastAuthority ? [state.lastAuthority, 'remembered'] : ['', ''];
+  const [paymentType, ptypeSrc] = state.ptype ? [state.ptype, 'user'] : state.lastPtype ? [state.lastPtype, 'remembered'] : ['Challan', 'default'];
   const built = buildRows(table, map, { authority, paymentType, dateHint: state.hint, edits: state.edits[state.tIdx] });
-  return { table, sig, map, confidence, authority, paymentType, built };
+  return { table, sig, map, confidence, authority, authoritySrc, paymentType, ptypeSrc, built };
 }
 
 const sess = chrome.storage.session; // memory-only; content-script access is enabled by background.js
@@ -144,15 +180,17 @@ function summary(cur) {
   if (!state.fileName) return { type: 'info', text: 'Choose a PDF, Excel or CSV file to begin.', chip: '' };
   if (!cur) return { type: 'error', text: 'No table with challan-like rows was found in this file. Try another file or sheet.', chip: '✕' };
   const b = cur.built, saved = savedChallanNos();
-  const missing = FIELDS.filter((f) => cur.map[f.key] == null && !(f.key === 'authority' && cur.authority) && !(f.key === 'paymentType' && cur.paymentType));
+  const stat = FIELDS.map((f) => fieldStatus(cur, f));
+  const missing = stat.filter((x) => x.kind === 'missing'), check = stat.filter((x) => x.kind === 'check');
   const bad = b.rows.filter((r) => !rowOk(r)).length;
   const left = b.rows.filter((r) => !saved.has(norm(r.challanNo))).length;
   const issues = [];
-  if (missing.length) issues.push(`${missing.length} portal column${missing.length > 1 ? 's' : ''} not found`);
+  if (missing.length) issues.push(`${missing.length} portal column${missing.length > 1 ? 's' : ''} missing`);
+  if (check.length) issues.push(`${check.length} column${check.length > 1 ? 's' : ''} to double-check`);
   if (b.ambiguous) issues.push('date format needs your answer');
   if (bad) issues.push(`${bad} row${bad > 1 ? 's' : ''} need fixing`);
   if (b.warnings.length) issues.push(b.warnings[0]);
-  if (issues.length) return { type: 'warn', text: issues.join(' · '), chip: '⚠ ' + (missing.length + (b.ambiguous ? 1 : 0) + bad + b.warnings.length), go: true };
+  if (issues.length) return { type: 'warn', text: issues.join(' · '), chip: '⚠ ' + (missing.length + check.length + (b.ambiguous ? 1 : 0) + bad + b.warnings.length), go: true };
   return left ? { type: 'ok', text: `Ready — ${left} row${left > 1 ? 's' : ''} left to enter.`, chip: '✓' } : { type: 'ok', text: 'All rows are already on the portal.', chip: '✓' };
 }
 
@@ -180,40 +218,99 @@ function renderStatus(pulse) {
 }
 
 /* ---------- render ---------- */
+const SRC = {
+  authority: { document: 'taken from the document heading', remembered: 'remembered from last time', user: 'set by you' },
+  ptype: { default: 'the default', remembered: 'remembered from last time', user: 'set by you' },
+};
+const typeLabel = (t) => (t === 'Reference' ? 'Certificate' : t);
+
+/** Plain-language status of one portal column: where its value comes from, or that it's missing. */
+function fieldStatus(cur, f) {
+  const c = cur.map[f.key], conf = cur.confidence[f.key], H = cur.table.headers;
+  const key = f.key;
+  if (c != null) {
+    const n = `“${H[c]}”`;
+    if (conf === 'high') return { kind: 'found', icon: '✓', text: `Found in column ${n}.` };
+    if (conf === 'saved') return { kind: 'found', icon: '✓', text: `Column ${n} (your choice).` };
+    return { kind: 'check', icon: '⚠', text: `${conf === 'guess' ? 'Guessed' : 'Probably'} column ${n}. Please check it.` };
+  }
+  if (key === 'authority' && cur.authority) return { kind: 'const', icon: 'ℹ', text: `No column. Using “${cur.authority}” for every row (${SRC.authority[cur.authoritySrc]}). Change it if it's wrong.` };
+  if (key === 'paymentType') return { kind: 'const', icon: 'ℹ', text: `No column. Using ${typeLabel(cur.paymentType)} for every row (${SRC.ptype[cur.ptypeSrc]}). Change it if this file has certificates.` };
+  return { kind: 'missing', icon: '✕', text: 'Not found in this file. Pick a column or type a value.' };
+}
+
 function mappingUI(cur) {
-  const { table, map, confidence } = cur;
-  const opts = (sel) => `<option value="">— choose column —</option>` + table.headers.map((h, c) => {
-    const sample = table.rows.find((r) => r[c])?.[c] ?? '';
-    return `<option value="${c}" ${sel === c ? 'selected' : ''}>${esc(short(h, 26))}${sample ? ' · e.g. ' + esc(short(sample, 22)) : ''}</option>`;
-  }).join('');
-  const label = { high: 'auto-detected', saved: 'from your mapping', medium: 'likely — please check', guess: 'guess — please check', none: 'not found' };
-  // a field is "covered" when it has a column, or a value that applies to every row
-  const covered = (k) => map[k] != null || (k === 'authority' && cur.authority) || (k === 'paymentType' && cur.paymentType);
-  const missing = FIELDS.filter((f) => !covered(f.key));
-  let h = `<details class="map" ${missing.length || state.mapOpen ? 'open' : ''}><summary>Column mapping${missing.length ? ` — ${missing.length} not found` : ' ✓'}</summary>`;
-  if (missing.length) h += `<div class="warn">Couldn\u2019t find: ${missing.map((f) => `<b>${esc(f.label)}</b>`).join(', ')}. Pick the right column below, or tell me what to look for in the file\u2019s column names.</div>`;
+  const { table, map } = cur;
+  const used = new Set(Object.values(map).filter((v) => v != null));
+  const sample = (c) => table.rows.find((r) => r[c])?.[c] ?? '';
+  const opts = (sel) => `<option value="">— none —</option>` + table.headers.map((h, c) =>
+    `<option value="${c}" ${sel === c ? 'selected' : ''}>${esc(short(h, 30))}${sample(c) ? ' · ' + esc(short(sample(c), 22)) : ''}</option>`).join('');
+  const st = FIELDS.map((f) => [f, fieldStatus(cur, f)]);
+  const nMissing = st.filter(([, s]) => s.kind === 'missing').length, nCheck = st.filter(([, s]) => s.kind === 'check').length;
+  const head = nMissing ? ` — <span class="tbad">${nMissing} missing</span>` : nCheck ? ` — <span class="tamber">${nCheck} to check</span>` : ' ✓';
+  let h = `<details class="map" ${state.mapOpen ? 'open' : ''}><summary>Check the column mapping${head}</summary>
+    <div class="hint">Each portal column is listed with where its value comes from. Confirm every line before you fill.</div>`;
   if (state.tables.length > 1) {
     h += `<div class="m"><span></span><span>Table / sheet</span><select data-a="table">${state.tables.map((t, i) => `<option value="${i}" ${i === state.tIdx ? 'selected' : ''}>${esc(short(t.name, 60))}</option>`).join('')}</select></div>`;
   }
   if (table.grid) {
     h += `<div class="m"><span></span><span>Header row #</span><span><input type="number" min="0" max="${table.grid.length}" style="width:70px" data-a="hdr" value="${table.headerRow + 1}"> <span class="sub">0 = no header row</span></span></div>`;
   }
-  for (const f of FIELDS) {
-    const c = confidence[f.key];
-    const flag = !covered(f.key);
-    h += `<div class="m"><span class="dot ${flag ? 'none' : c === 'none' ? 'saved' : c}" title="${flag ? 'not found' : label[c]}"></span><span>${esc(f.label)}</span><select data-a="map" data-f="${f.key}">${opts(map[f.key])}</select>`;
+  for (const [f, s] of st) {
+    const c = map[f.key];
+    h += `<div class="fld ${s.kind}"><div class="fh"><span class="ic ${s.kind}">${s.icon}</span><b>${esc(f.label)}</b>${c != null && sample(c) ? `<span class="eg">e.g. ${esc(short(sample(c), 26))}</span>` : ''}</div>
+      <div class="fs ${s.kind}">${esc(s.text)}</div>
+      <div class="fc"><select data-a="map" data-f="${f.key}" title="Column in your file">${opts(c)}</select>`;
     if (f.key === 'authority') {
-      h += `<span class="sub">\u2026or same for all rows: <input type="text" data-a="auth" value="${esc(state.authority ?? cur.authority)}" placeholder="e.g. employer name" style="width:190px"></span>`;
+      h += `<span class="or">or one value for every row:</span><input type="text" data-a="auth" value="${esc(cur.authority)}" placeholder="e.g. employer name">`;
     } else if (f.key === 'paymentType') {
-      h += `<span class="sub">\u2026or same for all rows: <select data-a="ptype" style="width:auto"><option value="">— choose —</option><option value="Challan" ${cur.paymentType === 'Challan' ? 'selected' : ''}>Challan</option><option value="Reference" ${cur.paymentType === 'Reference' ? 'selected' : ''}>Certificate</option></select></span>`;
+      h += `<span class="or">or one value for every row:</span><select data-a="ptype" style="width:auto"><option value="Challan" ${cur.paymentType === 'Challan' ? 'selected' : ''}>Challan</option><option value="Reference" ${cur.paymentType === 'Reference' ? 'selected' : ''}>Certificate</option></select>`;
     }
-    if (flag) {
-      h += `<span class="sub">What should I look for in the column name? <input type="text" data-a="kw" data-f="${f.key}" placeholder="e.g. TDS paid" style="width:130px"> <button data-a="kwgo" data-f="${f.key}">Find</button>${state.keywordMsg[f.key] ? `<br><span class="need">${esc(state.keywordMsg[f.key])}</span>` : ''}</span>`;
-    } else if (map[f.key] != null && c !== 'high' && c !== 'saved') h += `<span class="sub">${label[c]}</span>`;
+    h += `</div>`;
+    if (s.kind === 'missing') {
+      const cands = candidateColumns(table, f.key, used).slice(0, 6);
+      h += `<div class="sug"><span>Suggestions (click one):</span> ${cands.map((k) => `<button data-a="pick" data-f="${f.key}" data-c="${k}" title="${esc(short(sample(k), 40))}">${esc(short(table.headers[k], 28))}</button>`).join(' ') || '<i>no unused columns left</i>'}
+        <div class="kwrow">or type a word from its column name: <span class="ac"><span class="ghost" aria-hidden="true"></span><input type="text" data-a="kw" data-f="${f.key}" autocomplete="off" spellcheck="false"></span> <button data-a="kwgo" data-f="${f.key}">Find</button>
+        <small>→ adds a letter, Tab accepts the suggestion</small></div>
+        ${state.keywordMsg[f.key] ? `<div class="need">${esc(state.keywordMsg[f.key])}</div>` : ''}</div>`;
+    }
     h += `</div>`;
   }
   return h + `</details>`;
 }
+
+/* ghost-text suggestions for the "type a word" box */
+function suggestion(field, typed) {
+  const cur = current();
+  if (!cur) return '';
+  const used = new Set(Object.values(cur.map).filter((v) => v != null));
+  const heads = candidateColumns(cur.table, field, used).map((c) => cur.table.headers[c]);
+  const t = typed.toLowerCase();
+  if (!t) return heads[0] ?? '';
+  for (const hd of heads) {
+    const l = hd.toLowerCase();
+    for (let i = 0; i + t.length <= l.length; i++) if ((i === 0 || /[\s/\-_.(]/.test(l[i - 1])) && l.startsWith(t, i)) return hd.slice(i);
+  }
+  return '';
+}
+function paintGhost(input) {
+  const sug = suggestion(input.dataset.f, input.value);
+  input.dataset.sug = sug;
+  const ghost = input.parentElement.querySelector('.ghost');
+  ghost.innerHTML = `<span style="visibility:hidden">${esc(input.value)}</span>${esc(sug.slice(input.value.length))}`;
+}
+root.addEventListener('input', (e) => { if (e.target.dataset?.a === 'kw') paintGhost(e.target); });
+root.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (t?.dataset?.a !== 'kw' || (!e.isTrusted && !TEST)) return;
+  const sug = t.dataset.sug ?? '', rest = sug.slice(t.value.length);
+  const atEnd = t.selectionStart === t.value.length && t.selectionEnd === t.value.length;
+  if (e.key === 'Tab' && !e.shiftKey && rest && atEnd) { e.preventDefault(); t.value = sug; paintGhost(t); }
+  else if (e.key === 'ArrowRight' && rest && atEnd) { e.preventDefault(); t.value += rest[0]; paintGhost(t); }
+  else if (e.key === 'Enter') { e.preventDefault(); root.querySelector(`button[data-a="kwgo"][data-f="${t.dataset.f}"]`)?.click(); }
+});
+// remember whether the user collapsed the mapping section
+root.addEventListener('toggle', (e) => { if (e.target.matches?.('details.map')) state.mapOpen = e.target.open; }, true);
 
 function editFields(r, all) {
   const cols = [['paymentType', 'Payment type', r.paymentType === 'Reference' ? 'Certificate' : r.paymentType ?? ''], ['challanNo', 'Challan no.', r.challanNo], ['date', 'Date', r.date ? toPortal(r.date) : r.dateRaw], ['challanAmount', 'Challan amount', r.challanAmount ?? ''], ['tdsClaim', 'Claimed', r.tdsClaim ?? ''], ['authority', 'Authority', r.authority]];
@@ -261,7 +358,11 @@ function render() {
   }
   body.innerHTML = h;
   renderStatus();
-  if (state.scrollTo != null) { body.querySelector(`[data-row="${state.scrollTo}"]`)?.scrollIntoView({ block: 'nearest' }); state.scrollTo = null; }
+  body.querySelectorAll('input[data-a="kw"]').forEach(paintGhost);
+  if (state.scrollTo != null) {
+    (state.scrollTo === 'map' ? body.querySelector('.fld.missing, .fld.check') : body.querySelector(`[data-row="${state.scrollTo}"]`))?.scrollIntoView({ block: 'nearest' });
+    state.scrollTo = null;
+  }
 }
 
 /* ---------- actions ---------- */
@@ -277,7 +378,8 @@ function setMapField(field, value) {
   const cur = current();
   const map = { ...cur.map, [field]: value === '' ? null : +value };
   state.maps[state.tIdx] = map;
-  state.savedMaps['sig:' + cur.sig] = { cols: cur.table.headers.length, map };
+  (state.touched[state.tIdx] ??= []).includes(field) || state.touched[state.tIdx].push(field);
+  state.savedMaps['sig:' + cur.sig] = { cols: cur.table.headers.length, map, picked: [...state.touched[state.tIdx]] };
   chrome.storage.local.set({ [K.maps]: state.savedMaps }).catch(() => {});
   state.mapOpen = true;
 }
@@ -285,7 +387,7 @@ function setMapField(field, value) {
 root.addEventListener('click', async (e) => {
   if (!e.isTrusted && !TEST) return; // ignore clicks synthesised by scripts on the page
   if (e.target.closest('.status') && !e.target.closest('button') && statusEl.dataset.a === 'gotoissue') {
-    (body.querySelector('.row.bad') ?? body.querySelector('details.map'))?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    (body.querySelector('.fld.missing, .fld.check, .row.bad') ?? body.querySelector('details.map'))?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     if (!state.open) { state.open = true; render(); }
     return;
   }
@@ -324,6 +426,16 @@ async function onClick(b, a) {
       persist();
     }
   }
+  else if (a === 'pick') {
+    const f = b.dataset.f, c = +b.dataset.c, cur = current(), hdr = cur.table.headers[c];
+    if (!/^column [a-z]+$/i.test(hdr)) { // remember the header word for future files (not generic "Column A")
+      (state.aliases[f] ??= []).includes(hdr.toLowerCase()) || state.aliases[f].push(hdr.toLowerCase());
+      chrome.storage.local.set({ [K.aliases]: state.aliases }).catch(() => {});
+    }
+    setMapField(f, String(c));
+    persist();
+    notify('success', `${FIELDS.find((x) => x.key === f).label} \u2192 column \u201c${hdr}\u201d.`);
+  }
   else if (a === 'editall') { const s = +b.dataset.src; state.editAll.has(s) ? state.editAll.delete(s) : state.editAll.add(s); }
   else if (a === 'fill') {
     const r = rowBySrc(b.dataset.src);
@@ -360,15 +472,19 @@ root.addEventListener('change', async (e) => {
     let res;
     try { res = await extractFile(file, loaders); } catch (err) { res = { tables: [], error: 'Could not read the file: ' + err.message }; }
     const { tables, error } = res;
-    Object.assign(state, { busy: false, fileName: file.name, tables: rankTables(tables), tIdx: 0, headerRows: {}, maps: {}, keywordMsg: {}, rowNote: {}, ptype: undefined, authority: undefined, hint: undefined, edits: {}, editAll: new Set(), filled: new Set() });
+    Object.assign(state, { busy: false, fileName: file.name, tables: rankTables(tables), tIdx: 0, headerRows: {}, maps: {}, keywordMsg: {}, rowNote: {}, touched: {}, mapOpen: true, scrollTo: 'map', ptype: undefined, authority: undefined, hint: undefined, edits: {}, editAll: new Set(), filled: new Set() });
     persist();
     if (error) notify('error', error);
     else if (!tables.length) notify('error', 'No table was found in this file. Try another file, or export the certificate to CSV.');
     else { const n = current().built.rows.length; notify('success', `Loaded ${file.name}: ${n} row${n === 1 ? '' : 's'} found.`); }
   } else if (a === 'table') { state.tIdx = +t.value; state.hint = undefined; persist(); }
-  else if (a === 'hdr') { state.headerRows[state.tIdx] = Math.max(0, Math.floor(+t.value || 0)) - 1; delete state.maps[state.tIdx]; state.mapOpen = true; persist(); }
+  else if (a === 'hdr') { state.headerRows[state.tIdx] = Math.max(0, Math.floor(+t.value || 0)) - 1; delete state.maps[state.tIdx]; delete state.touched[state.tIdx]; state.mapOpen = true; persist(); }
   else if (a === 'map') { setMapField(t.dataset.f, t.value); persist(); }
-  else if (a === 'auth') { state.authority = t.value.trim(); persist(); }
+  else if (a === 'auth') {
+    state.authority = t.value.trim();
+    if (state.authority) { state.lastAuthority = state.authority; chrome.storage.local.set({ [K.authority]: state.authority }).catch(() => {}); } // default for the next file
+    persist();
+  }
   else if (a === 'ptype') { state.ptype = t.value || undefined; if (t.value) chrome.storage.local.set({ [K.ptype]: t.value }).catch(() => {}); persist(); }
   else if (a === 'edit') {
     const ed = ((state.edits[state.tIdx] ??= {})[t.dataset.src] ??= {});

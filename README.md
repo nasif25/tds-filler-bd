@@ -12,7 +12,7 @@ It **fills the form; you press save.** It never clicks the portal's Add or Save 
 >
 > Before you press save on each row, and again before you submit your return:
 >
-> 1. **Check the Column mapping** in the panel (amber, orange or red dots mean "please check").
+> 1. **Check the Column mapping** in the panel (amber ⚠ and red ✕ lines need your attention; blue ℹ lines are values used for every row, so make sure they're right).
 > 2. **Compare every filled value with your original certificate**: challan number, date, challan amount and claimed amount.
 > 3. **Check the totals.** The panel shows the claimed total, and the portal shows Total Claimed Amount and Count. They should match the certificate.
 > 4. **Check the portal's verification status** for each saved row afterwards.
@@ -48,30 +48,30 @@ Every row also has copy buttons (Challan no, Date, Amount, Claimed, Authority, a
 - The panel's border and header take the same colour, and a small chip stays visible when the panel is collapsed.
 - Each row shows its own result after Fill: green when filled, red with the reason if it couldn't be.
 
-### Column mapping
+### Column mapping (always shown first)
 
-The extension matches your file's columns to the portal's columns:
+After you choose a file, the panel opens **Check the column mapping**: one block per portal column, each with an icon and a sentence saying where its value comes from. Read every line before you fill.
 
-| Portal column | How it's found |
+| Icon | Meaning |
 |---|---|
-| Depositing Authority | a column, or one name for all rows (auto-filled from a PDF's employer heading) |
-| Payment Document Type | a column with Challan / Certificate values, or one choice for all rows |
-| Challan/ Certificate Reference No. | header words like "challan no", "reference"; values like `2526-00040888871` |
-| Challan/ Certificate Date | header words like "date"; date-looking values |
-| Challan/ Certificate Amount | header words like "total amount in the challan" |
-| Claimed Amount | header words like "claimed", "relating to this certificate", "TDS" |
+| ✓ green | Found in a column of your file, e.g. "Found in column “Challan No.”". |
+| ℹ blue | No column, so one value is used for every row, and it says where that came from: "from the document heading", "remembered from last time", "the default", or "set by you". Change it if it's wrong. |
+| ⚠ amber | The extension guessed a column. Please check it. |
+| ✕ red | Not found. It's highlighted and it offers **suggestions**. |
 
-A coloured dot shows how sure it is: green = found, amber = likely, orange = guess, red = not found.
+The portal columns are: Depositing Authority, Payment Document Type, Challan/ Certificate Reference No., Challan/ Certificate Date, Challan/ Certificate Amount, Claimed Amount.
 
-If something is wrong or missing:
+- **Payment Document Type** defaults to **Challan** for every row. Switch it to Certificate if your file has certificates, or map a column that holds Challan / Certificate values.
+- **Depositing Authority** comes from a column, or one name for every row. For PDFs the employer name in the document heading is used; a name you type is remembered for the next file.
 
-- Pick the right column from that field's dropdown, or
-- Type a word that appears in the column's name under **What should I look for in the column name?** and press **Find**. It's remembered for future files.
-- For Excel/CSV, set **Header row #** if the header isn't on the first row (0 = no header).
+If a portal column is missing (red):
+
+- Click one of the **suggested columns** (unused columns, best fit first), or choose from the dropdown, or
+- Type a word from the column's name in the **type a word** box. Grey ghost text suggests a column name as you type: **→** adds one letter, **Tab** accepts the whole suggestion, **Enter** searches. Your word is remembered for future files.
+- For Excel/CSV, set **Header row #** if the header isn't on the first row (0 = no header row).
 - If a file has several tables or sheets, choose one from **Table / sheet**.
-- **Payment Document Type** and **Depositing Authority** can be set once for all rows. Your choice is remembered.
 
-Corrected mappings are remembered for files with the same headers.
+Columns you pick are remembered for files with the same headers. Guesses stay flagged until you confirm them.
 
 ### Fixing a row
 

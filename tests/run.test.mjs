@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as XLSX from '../vendor/xlsx.mjs';
 import { parseDate, toPortal } from '../lib/dates.js';
 import { extractFile, rankTables, parseCsv, withHeaderRow } from '../lib/extract.js';
-import { autoMap, buildRows, rowOk, signature, normPaymentType } from '../lib/mapping.js';
+import { autoMap, buildRows, rowOk, signature, normPaymentType, candidateColumns } from '../lib/mapping.js';
 
 const loaders = { pdfPages: async () => { throw new Error('PDF loader not used in the committed tests'); }, xlsx: async () => XLSX };
 const fileFromText = (name, text) => ({ name, text: async () => text });
@@ -146,4 +146,21 @@ test('aliases: a keyword the user taught maps a header we could not recognise', 
   const t = (await extractFile(fileFromText('a.csv', csv), loaders)).tables[0];
   const { map } = autoMap(t, undefined, { tdsClaim: ['tds paid'], challanAmount: ['grand'] });
   assert.equal(map.tdsClaim, 4); assert.equal(map.challanAmount, 3);
+});
+
+test('suggestions: unused columns ranked by fit for the missing field', () => {
+  const t = { headers: ['Slip', 'When', 'Grand Total', 'Note'], rows: [['2526-00000000011', '2025-08-13', '1000', 'ok'], ['2526-00000000022', '2025-09-13', '2000', 'fine']] };
+  assert.equal(candidateColumns(t, 'challanAmount', new Set([0, 1]))[0], 2); // numeric column first
+  assert.equal(candidateColumns(t, 'date', new Set())[0], 1);
+  assert.ok(!candidateColumns(t, 'date', new Set([1])).includes(1)); // already used columns are not suggested
+});
+
+test('saved mapping: only picked fields are "yours"; guesses keep asking to be checked', () => {
+  const t = { headers: ['Slip', 'When', 'Grand Total', 'Withheld'], rows: [['2526-00000000011', '2025-08-13', '1000', '100']] };
+  const fresh = autoMap(t);
+  assert.notEqual(fresh.confidence.date, 'saved');
+  const saved = { cols: 4, map: { ...fresh.map, challanAmount: 2 }, picked: ['challanAmount'] };
+  const r = autoMap(t, saved);
+  assert.equal(r.map.challanAmount, 2); assert.equal(r.confidence.challanAmount, 'saved');
+  assert.equal(r.map.date, fresh.map.date); assert.equal(r.confidence.date, fresh.confidence.date); // untouched: still a detection
 });

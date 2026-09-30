@@ -6,6 +6,19 @@ Everything happens in your browser. Nothing is uploaded. See [SECURITY.md](SECUR
 
 It **fills the form; you press save.** It never clicks the portal's Add or Save buttons.
 
+> ## ⚠️ Always verify after importing
+>
+> Reading a PDF, Excel or CSV file and matching its columns is automatic, and **it can be wrong**: a column may be mapped to the wrong field, a PDF may have an unusual layout, a date may be read in the wrong order, or a value may be misread. This tool is a data-entry aid, not a source of truth. **You are responsible for what you submit to the tax authority.**
+>
+> Before you press save on each row, and again before you submit your return:
+>
+> 1. **Check the Column mapping** in the panel (amber, orange or red dots mean "please check").
+> 2. **Compare every filled value with your original certificate**: challan number, date, challan amount and claimed amount.
+> 3. **Check the totals.** The panel shows the claimed total, and the portal shows Total Claimed Amount and Count. They should match the certificate.
+> 4. **Check the portal's verification status** for each saved row afterwards.
+>
+> The software is provided "as is", without warranty of any kind (see [LICENSE](LICENSE)).
+
 ## Install (Chrome, unpacked)
 
 1. Open `chrome://extensions`.

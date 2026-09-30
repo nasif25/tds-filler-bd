@@ -97,3 +97,7 @@ TDS_SAMPLE_PDF=/path/to/certificate.pdf node --test tests/local/
 ```
 
 Layout: `manifest.json`, `background.js` (toolbar button), `content/` (panel and portal form access), `lib/` (file reading, column mapping, dates), `vendor/` (pdf.js and SheetJS, checksums in `SECURITY.md`).
+
+## License
+
+Copyright (c) 2026 Nasif Mahbub. All rights reserved. Source is viewable for educational, review or evaluation purposes only; see [LICENSE](LICENSE). Bundled libraries in `vendor/` keep their own licenses.

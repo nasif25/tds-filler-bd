@@ -1,0 +1,13 @@
+Copyright (c) 2026 Nasif Mahbub. All rights reserved.
+
+Permission is hereby granted to view the source code of this software
+solely for educational, review, or evaluation purposes on this GitHub repository.
+
+You may not modify, distribute, sublicense, sell, or use this software
+for any commercial or non-commercial production purposes without explicit
+written permission from the copyright holder.
+
+The software is provided "as is", without warranty of any kind.
+
+Third-party components in the vendor/ directory (pdf.js, SheetJS) are not covered
+by this notice and remain under their own licenses.
